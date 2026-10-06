@@ -11,6 +11,7 @@ permissions:
 
 jobs:
   obfuscate-and-release:
+    if: ${{ github.repository == 'clevertechn/1xmd' }}
     runs-on: ubuntu-latest
     timeout-minutes: 120
 
@@ -83,3 +84,34 @@ jobs:
             --repo "$GITHUB_REPOSITORY" \
             --title "Obfuscated build ${GITHUB_RUN_NUMBER}" \
             --notes "Automatically generated from main commit ${GITHUB_SHA}. All JavaScript files were obfuscated using the repository workflow. The release snapshot contains all tracked project files."
+
+      - name: Sync obfuscated release to public xmd main
+        env:
+          GH_TOKEN: ${{ secrets.XMD_PUBLIC_REPO_TOKEN }}
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          if [[ -z "${GH_TOKEN:-}" ]]; then
+            echo 'XMD_PUBLIC_REPO_TOKEN secret is missing or empty.' >&2
+            exit 1
+          fi
+
+          gh auth setup-git
+          target_dir="${RUNNER_TEMP}/xmd-public"
+          rm -rf "$target_dir"
+          git clone https://github.com/clevertechn/xmd.git "$target_dir"
+          rsync -a --delete --exclude='/.git/' ./ "$target_dir/"
+
+          cd "$target_dir"
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add -A
+
+          if git diff --cached --quiet; then
+            echo 'Public main already matches this release snapshot.'
+          else
+            git commit -m "Sync obfuscated release build ${GITHUB_RUN_NUMBER}"
+          fi
+
+          git push origin HEAD:main
