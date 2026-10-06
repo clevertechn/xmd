@@ -1,0 +1,85 @@
+name: Obfuscated release
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  obfuscate-and-release:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Obfuscate every JavaScript file
+        shell: bash
+        run: |
+          set -euo pipefail
+          mapfile -d '' js_files < <(find . -type f -name '*.js' \
+            -not -path './.git/*' \
+            -not -path './node_modules/*' \
+            -print0)
+
+          if [[ ${#js_files[@]} -eq 0 ]]; then
+            echo 'No JavaScript files found.' >&2
+            exit 1
+          fi
+
+          for file in "${js_files[@]}"; do
+            echo "Obfuscating ${file}"
+            npx --yes javascript-obfuscator "$file" \
+              --output "$file" \
+              --compact true \
+              --control-flow-flattening true \
+              --control-flow-flattening-threshold 1 \
+              --dead-code-injection true \
+              --dead-code-injection-threshold 0.4 \
+              --self-defending true \
+              --string-array true \
+              --string-array-encoding rc4 \
+              --string-array-threshold 1 \
+              --string-array-rotate true \
+              --string-array-shuffle true \
+              --string-array-index-shift true \
+              --string-array-wrappers-count 5 \
+              --string-array-wrappers-chained-calls true \
+              --string-array-wrappers-type function \
+              --split-strings true \
+              --split-strings-chunk-length 5 \
+              --numbers-to-expressions true \
+              --simplify true
+            node --check "$file"
+          done
+
+      - name: Create obfuscated source snapshot and release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add -A
+          git commit -m "chore(release): obfuscated build ${GITHUB_RUN_NUMBER}"
+
+          tag="obfuscated-${GITHUB_RUN_NUMBER}-${GITHUB_RUN_ATTEMPT}-${GITHUB_SHA::12}"
+          git tag -a "$tag" -m "Obfuscated build from ${GITHUB_SHA}"
+          git push origin "$tag"
+
+          gh release create "$tag" \
+            --repo "$GITHUB_REPOSITORY" \
+            --title "Obfuscated build ${GITHUB_RUN_NUMBER}" \
+            --notes "Automatically generated from main commit ${GITHUB_SHA}. All JavaScript files were obfuscated using the repository workflow. The release snapshot contains all tracked project files."
