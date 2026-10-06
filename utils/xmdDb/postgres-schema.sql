@@ -126,7 +126,7 @@ CREATE INDEX IF NOT EXISTS idx_chatbot_profiles_bot_user ON chatbot_profiles (bo
 
 -- The adapter calls this function to fill missing SQLite rows during startup.
 -- It deliberately returns payloads compatible with pgAdapter.restoreIntoSQLite.
-CREATE OR REPLACE FUNCTION june_restore_snapshot(requested_bot_id TEXT)
+CREATE OR REPLACE FUNCTION blackhat_restore_snapshot(requested_bot_id TEXT)
 RETURNS TABLE(table_name TEXT, payload JSONB)
 LANGUAGE sql
 STABLE
